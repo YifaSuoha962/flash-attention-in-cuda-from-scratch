@@ -178,7 +178,7 @@ __global__ void row_sum(const float* matrix, float* out, int rows, int cols) {
 
 // __device__ 是"只能在 GPU 上被调用的普通函数"。它有返回值，不能被 host 调用，也不能被 <<<>>> 启动，只能被 __global__ kernel 或另一个 __device__ 函数调用。
 // 并行度由调用它的 kernel 决定，不由它自己决定。
-    
+
 __device__ float dot_product(const float* a, const float* b, int n) {
 
     // 1. 累加器必须是局部 float，初值 0.0f
@@ -192,6 +192,10 @@ __device__ float dot_product(const float* a, const float* b, int n) {
     // 3. 直接返回标量，不需要写 out[...] 也不需要同步
     return acc;
 }
+
+// 如果用 __global__ 限定，会报error: a __global__ function must have void return type。
+// 因为 __global__ 是"异步启动"的语义——host 发起后立刻返回，GPU 端跑完结果只能通过指针写回，没法用返回值同步拿回来。
+// 这正是 __device__ 存在的意义：同步、有返回值的 GPU 端普通函数。
 
 # Step 7 - matmul (not yet solved)
 # TODO: implement
