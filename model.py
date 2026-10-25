@@ -208,8 +208,8 @@ __global__ void matmul(const float* a, const float* b, float* c, int m, int k, i
     if (i >= m || j >= n) return;
 
     // 3. 定位 A 的第 i 行、B 的第 j 列
-    //    A 行主序 [m x k]：A[i][l] 在 a + i*k + l，步长 1
-    //    B 行主序 [k x n]：B[l][j] 在 b + l*n + j，步长 n  ← 这就是经典坑
+    //    A 行主序 [m x k]：A[i][l] 在 a + i*k + l，遍历指定vector内的特征，步长 1
+    //    B 行主序 [k x n]：B[l][j] 在 b + l*n + j，遍历指定vector内的特征，步长 n  ← 这就是经典坑
     const float* A_row = a + (long long)i * k;       // 长度 k
     const float* B_col = b + j;                      // 从第 j 个元素开始，步长 n
 
