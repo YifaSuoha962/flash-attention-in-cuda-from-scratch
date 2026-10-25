@@ -56,7 +56,8 @@ __global__ void row_max(const float* matrix, float* out, int rows, int cols) {
 
     // 越界保护：grid 通常是向上取整，尾部会有多余线程
     if (r >= rows) return;
-    // 定位这一行的起点，注意用 long long 防止 r*cols 溢出
+    // 从整块矩阵的首地址出发，跳到第 r 行的开头，得到"第 r 行首元素"的指针。
+    // 注意用 long long 防止 r*cols 溢出
     const float* row = matrix + (long long)r * cols;
     // 线性扫描求最大；用 -INFINITY 而不是 0 作为初值
     float m = -INFINITY;
