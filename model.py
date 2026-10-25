@@ -83,8 +83,19 @@ __global__ void row_sum(const float* matrix, float* out, int rows, int cols) {
     out[r] = sum;                            // ✅ 写回
 }
 
-# Step 6 - dot_product (not yet solved)
-# TODO: implement
+# Step 6 - dot_product
+__device__ float dot_product(const float* a, const float* b, int n) {
+    // 1. 累加器必须是局部 float，初值 0.0f
+    float acc = 0.0f;
+
+    // 2. 单线程串行扫完 n 个元素，累加 a[i]*b[i]
+    for (int i = 0; i < n; ++i) {
+        acc += a[i] * b[i];
+    }
+
+    // 3. 直接返回标量，不需要写 out[...] 也不需要同步
+    return acc;
+}
 
 # Step 7 - matmul (not yet solved)
 # TODO: implement
