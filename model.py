@@ -197,8 +197,31 @@ __device__ float dot_product(const float* a, const float* b, int n) {
 // 因为 __global__ 是"异步启动"的语义——host 发起后立刻返回，GPU 端跑完结果只能通过指针写回，没法用返回值同步拿回来。
 // 这正是 __device__ 存在的意义：同步、有返回值的 GPU 端普通函数。
 
-# Step 7 - matmul (not yet solved)
-# TODO: implement
+# Step 7 - matmul
+__global__ void matmul(const float* a, const float* b, float* c, int m, int k, int n) {
+    // TODO: compute C = A * B for row-major matrices
+    // 1. 从 2D 网格拿到本线程负责的输出元素坐标 (i, j)
+    int j = blockIdx.x * blockDim.x + threadIdx.x;   // 列号，对应 C 的第二维 n
+    int i = blockIdx.y * blockDim.y + threadIdx.y;   // 行号，对应 C 的第一维 m
+
+    // 2. 边界保护：m / n 不是 blockDim 倍数时，尾部线程必须退出
+    if (i >= m || j >= n) return;
+
+    // 3. 定位 A 的第 i 行、B 的第 j 列
+    //    A 行主序 [m x k]：A[i][l] 在 a + i*k + l，步长 1
+    //    B 行主序 [k x n]：B[l][j] 在 b + l*n + j，步长 n  ← 这就是经典坑
+    const float* A_row = a + (long long)i * k;       // 长度 k
+    const float* B_col = b + j;                      // 从第 j 个元素开始，步长 n
+
+    // 4. 沿共享维度 k 做累加（相当于 dot_product(A_row, B_col 跨步取)）
+    float acc = 0.0f;
+    for (int l = 0; l < k; ++l) {
+        acc += A_row[l] * B_col[l * n];              // B[l][j] = b[l*n + j]
+    }
+
+    // 5. 写回 C[i][j] = c + i*n + j
+    c[(long long)i * n + j] = acc;
+}
 
 # Step 8 - transpose (not yet solved)
 # TODO: implement
