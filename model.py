@@ -223,8 +223,21 @@ __global__ void matmul(const float* a, const float* b, float* c, int m, int k, i
     c[(long long)i * n + j] = acc;  
 }
 
-# Step 8 - transpose (not yet solved)
-# TODO: implement
+# Step 8 - transpose
+__global__ void transpose(const float* in, float* out, int rows, int cols) {
+    // TODO: write out[c*rows + r] = in[r*cols + c]
+    // 1. 2D 网格：threadIdx.x → 列 c，threadIdx.y → 行 r（与 matmul 的约定一致）
+    int c = blockIdx.x * blockDim.x + threadIdx.x;   // 输入列号，范围 [0, cols)
+    int r = blockIdx.y * blockDim.y + threadIdx.y;   // 输入行号，范围 [0, rows)
+
+    // 2. 边界保护：rows/cols 不一定是 blockDim 倍数
+    if (r >= rows || c >= cols) return;
+
+    // 3. 读 in[r][c]，写到 out[c][r]
+    //    输入行主序 (rows, cols)：in[r*cols + c]
+    //    输出行主序 (cols, rows)：out[c*rows + r]  ← 注意 stride 是 rows，不是 cols
+    out[(long long)c * rows + r] = in[(long long)r * cols + c];
+}
 
 # Step 9 - qk_scores (not yet solved)
 # TODO: implement
