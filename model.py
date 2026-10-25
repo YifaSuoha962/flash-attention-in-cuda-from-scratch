@@ -103,9 +103,10 @@ __global__ void row_sum(const float* matrix, float* out, int rows, int cols) {
     }
 
     // 2. 写进共享内存
+    // 对于用 extern 定义的变量，编译期不知道有多大；运行期才为其分配内存
     extern __shared__ float smem[];            // 大小由 launch 决定：blockDim.x*sizeof(float)
-    smem[threadIdx.x] = partial;
-    __syncthreads();                           // ✅ 必须：让所有线程的 partial 可见
+    smem[threadIdx.x] = partial;                // 每个线程写自己的槽
+    __syncthreads();                           // ✅ 必须：让所有线程的 partial 可见，缺了这行，线程 0 可能读到其他线程还没写的 0
 
     // 3. 树形归约（每轮减半，O(log B) 步）
     for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
