@@ -49,8 +49,23 @@ __global__ void elementwise_exp(float* a, int n) {
     }
 }
 
-# Step 4 - row_max (not yet solved)
-# TODO: implement
+# Step 4 - row_max
+__global__ void row_max(const float* matrix, float* out, int rows, int cols) {
+    // TODO: compute the max of each row and write it to out[r].
+    int r = blockIdx.x * blockDim.x + threadIdx.x;
+
+    // 越界保护：grid 通常是向上取整，尾部会有多余线程
+    if (r >= rows) return;
+    // 定位这一行的起点，注意用 long long 防止 r*cols 溢出
+    const float* row = matrix + (long long)r * cols;
+    // 线性扫描求最大；用 -INFINITY 而不是 0 作为初值
+    float m = -INFINITY;
+    for (int c = 0; c < cols; ++c) {
+        if (row[c] > m) m = row[c];
+    }
+    // 写回这一行的结果
+    out[r] = m;
+}
 
 # Step 5 - row_sum (not yet solved)
 # TODO: implement
