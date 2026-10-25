@@ -189,7 +189,7 @@ __device__ float dot_product(const float* a, const float* b, int n) {
         acc += a[i] * b[i];
     }
 
-    // 3. 直接返回标量，不需要写 out[...] 也不需要同步
+    // 3. 直接返回标量，不需要写 out[...] 也不需要同步, 返回值直接落进调用者的寄存器.
     return acc;
 }
 
