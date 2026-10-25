@@ -219,8 +219,8 @@ __global__ void matmul(const float* a, const float* b, float* c, int m, int k, i
         acc += A_row[l] * B_col[l * n];              // B[l][j] = b[l*n + j]
     }
 
-    // 5. 写回 C[i][j] = c + i*n + j
-    c[(long long)i * n + j] = acc;
+    // 5. 写回 C[i][j] = c + i*n + j, c \in R^{n \times n}
+    c[(long long)i * n + j] = acc;  
 }
 
 # Step 8 - transpose (not yet solved)
