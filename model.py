@@ -78,17 +78,47 @@ __global__ void row_max(const float* matrix, float* out, int rows, int cols) {
 
 # Step 5 - row_sum
 __global__ void row_sum(const float* matrix, float* out, int rows, int cols) {
-    // TODO: write out[r] = sum of matrix row r
-    int r = blockIdx.x * blockDim.x + threadIdx.x;
+//     // TODO: write out[r] = sum of matrix row r
+//     int r = blockIdx.x * blockDim.x + threadIdx.x;
+//     if (r >= rows) return;
+
+//     const float* row = matrix + (long long)r * cols;
+
+//     float sum = 0.0f;                        // ✅ float + 正确初值
+//     for (int c = 0; c < cols; ++c) {
+//         sum += row[c];
+//     }
+//     out[r] = sum;                            // ✅ 写回
+
+// 进阶：规约写法
+    int r = blockIdx.x;                        // ✅ 一个 block 处理一行
     if (r >= rows) return;
 
     const float* row = matrix + (long long)r * cols;
 
-    float sum = 0.0f;                        // ✅ float + 正确初值
-    for (int c = 0; c < cols; ++c) {
-        sum += row[c];
+    // 1. 每线程的列内部分和
+    float partial = 0.0f;
+    for (int c = threadIdx.x; c < cols; c += blockDim.x) {
+        partial += row[c];
     }
-    out[r] = sum;                            // ✅ 写回
+
+    // 2. 写进共享内存
+    extern __shared__ float smem[];            // 大小由 launch 决定：blockDim.x*sizeof(float)
+    smem[threadIdx.x] = partial;
+    __syncthreads();                           // ✅ 必须：让所有线程的 partial 可见
+
+    // 3. 树形归约（每轮减半，O(log B) 步）
+    for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+        if (threadIdx.x < stride) {
+            smem[threadIdx.x] += smem[threadIdx.x + stride];
+        }
+        __syncthreads();                       // ✅ 每轮之间必须同步
+    }
+
+    // 4. 线程 0 写回
+    if (threadIdx.x == 0) {
+        out[r] = smem[0];
+    }
 }
 
 # Step 6 - dot_product
