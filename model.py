@@ -7,6 +7,17 @@ Assembled from your step-by-step solutions.
 import numpy as np
 
 # Step 1 - vector_add
+// Pres
+// 在 kernel 内部，CUDA 运行时自动注入了这些只读变量，你不用声明直接可用：
+
+// 变量	        类型	 含义	
+// blockIdx	    uint3	当前 block 在 grid 中的编号	
+// blockDim	    uint3	每个 block 里的线程数（启动时配置）	
+// threadIdx	uint3	当前线程在 block 内的编号	
+// gridDim	    uint3	grid 里的 block 总数（启动时配置）	
+
+// 每个变量又包含三个属性：.x、.y、.z，它们是 CUDA 提供的三维线程坐标的三个轴，不代表物理空间坐标，具体的语义——"哪个轴代表行、哪个代表列"完全由你在 kernel 里约定。
+
 __global__ void vector_add(const float* a, const float* b, float* c, int n) {
     // TODO: implement elementwise c[i] = a[i] + b[i]
     // 1. 计算当前线程的全局一维下标
