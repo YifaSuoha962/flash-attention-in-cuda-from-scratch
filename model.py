@@ -122,6 +122,50 @@ __global__ void row_sum(const float* matrix, float* out, int rows, int cols) {
     }
 }
 
+// 校验实验
+// int main() {
+//     const int rows = 17, cols = 1000;          // 覆盖非整除、中等列数
+//     const int n = rows * cols;
+//     std::vector<float> h_mat(n), h_A(rows), h_B(rows), ref(rows);
+
+//     // 用带正负的随机值填，验证 float 累加精度
+//     for (int i = 0; i < n; ++i)
+//         h_mat[i] = (static_cast<float>(rand()) / RAND_MAX - 0.5f);
+//     for (int r = 0; r < rows; ++r) {
+//         double s = 0.0;
+//         for (int c = 0; c < cols; ++c) s += h_mat[r * cols + c];
+//         ref[r] = static_cast<float>(s);
+//     }
+
+//     float *d_mat, *d_A, *d_B;
+//     CUDA_CHECK(cudaMalloc(&d_mat, n * sizeof(float)));
+//     CUDA_CHECK(cudaMalloc(&d_A, rows * sizeof(float)));
+//     CUDA_CHECK(cudaMalloc(&d_B, rows * sizeof(float)));
+//     CUDA_CHECK(cudaMemcpy(d_mat, h_mat.data(), n * sizeof(float), cudaMemcpyHostToDevice));
+
+//     const int threads = 256;
+//     // A：一线程一行
+//     row_sum<<<(rows + threads - 1) / threads, threads>>>(d_mat, d_A, rows, cols);
+//     // B：一 block 一行
+//     row_sum_block<<<rows, threads, threads * sizeof(float)>>>(d_mat, d_B, rows, cols);
+//     CUDA_CHECK(cudaGetLastError());
+//     CUDA_CHECK(cudaDeviceSynchronize());
+
+//     CUDA_CHECK(cudaMemcpy(h_A.data(), d_A, rows * sizeof(float), cudaMemcpyDeviceToHost));
+//     CUDA_CHECK(cudaMemcpy(h_B.data(), d_B, rows * sizeof(float), cudaMemcpyDeviceToHost));
+
+//     float errA = 0.f, errB = 0.f;
+//     for (int r = 0; r < rows; ++r) {
+//         errA = std::fmax(errA, std::fabs(h_A[r] - ref[r]));
+//         errB = std::fmax(errB, std::fabs(h_B[r] - ref[r]));
+//     }
+//     printf("A(one-thread-per-row): max_err=%e %s\n", errA, errA < 1e-3f ? "PASS" : "FAIL");
+//     printf("B(one-block-per-row) : max_err=%e %s\n", errB, errB < 1e-3f ? "PASS" : "FAIL");
+
+//     CUDA_CHECK(cudaFree(d_mat)); CUDA_CHECK(cudaFree(d_A)); CUDA_CHECK(cudaFree(d_B));
+//     return 0;
+// }
+
 # Step 6 - dot_product
 __device__ float dot_product(const float* a, const float* b, int n) {
     // 1. 累加器必须是局部 float，初值 0.0f
