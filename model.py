@@ -58,10 +58,12 @@ __global__ void row_max(const float* matrix, float* out, int rows, int cols) {
     if (r >= rows) return;
     
     // 从整块矩阵的首地址出发 （matrix ~ matrix[0][0]），跳到第 r 行的开头（+ r * cols），得到"第 r 行首元素"的指针。
-    // 注意用 long long 防止 r*cols 溢出
     // 为什么用 const ？
     //   1. 编译器优化：可以做只读缓存（__ldg 之类）、避免不必要的重排序。
     //   2. 类型安全：matrix 本身参数类型就是 const float*，从 const float* 得到的指针自然也是 const，不加 const 反而要 const_cast。
+    
+    // 注意用 long long 防止 r*cols 溢出，触发条件：rows * cols > 2^31 - 1。
+    // 对 float 来说，就是矩阵 > 8 GB，现在的 A100/H100 一块卡 40GB/80GB，轻轻松松触发。
     const float* row = matrix + (long long)r * cols;
 
 
