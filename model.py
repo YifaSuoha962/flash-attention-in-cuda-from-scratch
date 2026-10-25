@@ -167,7 +167,20 @@ __global__ void row_sum(const float* matrix, float* out, int rows, int cols) {
 // }
 
 # Step 6 - dot_product
+// 限定符比较
+//     限定符	  调用/执行位置	    是否 kernel（可 <<<>>> 启动）	返回值	 本步
+// __host__	      host (CPU)	    ❌	                        任意	 普通 C++ 函数
+// __device__	  device (GPU)	    ❌	                        任意	 ✅ 本步
+// __global__	  hdevice (GPU)	    ✅	                        void	 前面的 kernel
+// 关键点：
+
+// __global__ 是"从 host 启动、在 GPU 上跑的 kernel"。它没有返回值（void），通过指针写回结果，必须用 <<<blocks, threads>>> 启动。
+
+// __device__ 是"只能在 GPU 上被调用的普通函数"。它有返回值，不能被 host 调用，也不能被 <<<>>> 启动，只能被 __global__ kernel 或另一个 __device__ 函数调用。
+// 并行度由调用它的 kernel 决定，不由它自己决定。
+    
 __device__ float dot_product(const float* a, const float* b, int n) {
+
     // 1. 累加器必须是局部 float，初值 0.0f
     float acc = 0.0f;
 
