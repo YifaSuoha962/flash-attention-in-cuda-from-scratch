@@ -28,15 +28,8 @@ __global__ void vector_add(const float* a, const float* b, float* c, int n) {
     }
 }
 
-// Host 端启动方式
-// void launch_vector_add(const float* d_a, const float* d_b, float* d_c, int n) {
-//     if (n <= 0) return;
-
-//     const int threads = 256;
-//     const int blocks  = (n + threads - 1) / threads;  // 向上取整
-
-//     vector_add<<<blocks, threads>>>(d_a, d_b, d_c, n);
-// }
+// i 不是"一个值"，而是"每个线程各自的一个值"。CUDA 里没有"全线程共享一份、各自独立的值"这种东西——要么是每线程私有的局部变量（int i），
+// 要么是所有线程共享的同一块内存（__device__ int g_i，会打架）。
 
 # Step 2 - scale_array
 __global__ void scale_array(float* a, float scalar, int n) {
@@ -47,8 +40,14 @@ __global__ void scale_array(float* a, float scalar, int n) {
     }
 }
 
-# Step 3 - elementwise_exp (not yet solved)
-# TODO: implement
+# Step 3 - elementwise_exp
+__global__ void elementwise_exp(float* a, int n) {
+    // TODO: replace each a[i] with expf(a[i])
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) {
+        a[i] = expf(a[i]);   // 用 expf，避免隐式 double 提升
+    }
+}
 
 # Step 4 - row_max (not yet solved)
 # TODO: implement
