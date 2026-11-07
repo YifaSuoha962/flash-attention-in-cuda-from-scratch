@@ -351,8 +351,54 @@ __global__ void pv_matmul(const float* p, const float* v, float* out, int seq_le
     out[i * head_dim + d] = sum;
 }
 
-# Step 12 - naive_attention (not yet solved)
-# TODO: implement
+# Step 12 - naive_attention
+void naive_attention(
+    const float* d_q,
+    const float* d_k,
+    const float* d_v,
+    float* d_out,
+    int seq_len,
+    int head_dim
+) {
+    // 临时保存 QK^T / sqrt(head_dim)，之后原地转换为 softmax 概率。
+    float* d_scores = nullptr;
+    size_t scores_bytes =
+        static_cast<size_t>(seq_len) * seq_len * sizeof(float);
+
+    if (cudaMalloc(reinterpret_cast<void**>(&d_scores), scores_bytes)
+        != cudaSuccess) {
+        return;
+    }
+
+    // 阶段一：计算分数矩阵，每个线程负责一个 scores[i, j]。
+    dim3 block_qk(16, 16);
+    dim3 grid_qk(
+        (seq_len + block_qk.x - 1) / block_qk.x,
+        (seq_len + block_qk.y - 1) / block_qk.y
+    );
+    qk_scores<<<grid_qk, block_qk>>>(
+        d_q, d_k, d_scores, seq_len, head_dim
+    );
+
+    // 阶段二：每个 block 处理一行，原地计算 row-wise softmax。
+    // 这里按题目给定的配置启动。
+    softmax_rows<<<seq_len, 128, 128 * sizeof(float)>>>(
+        d_scores, seq_len, seq_len
+    );
+
+    // 阶段三：计算 out = P * V，每个线程负责一个 out[i, d]。
+    dim3 block_pv(16, 16);
+    dim3 grid_pv(
+        (head_dim + block_pv.x - 1) / block_pv.x,
+        (seq_len + block_pv.y - 1) / block_pv.y
+    );
+    pv_matmul<<<grid_pv, block_pv>>>(
+        d_scores, d_v, d_out, seq_len, head_dim
+    );
+
+    // 同一默认 stream 中的 kernel 按顺序执行；释放临时缓冲区。
+    cudaFree(d_scores);
+}
 
 # Step 13 - online_max (not yet solved)
 # TODO: implement
