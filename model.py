@@ -239,8 +239,22 @@ __global__ void transpose(const float* in, float* out, int rows, int cols) {
     out[(long long)c * rows + r] = in[(long long)r * cols + c];
 }
 
-# Step 9 - qk_scores (not yet solved)
-# TODO: implement
+# Step 9 - qk_scores
+__global__ void qk_scores(const float* q, const float* k, float* scores, int seq_len, int head_dim) {
+    // TODO: compute scores[i, j] = dot(q_row_i, k_row_j) / sqrt(head_dim)
+    int i = blockIdx.y * blockDim.y + threadIdx.y;
+    int j = blockIdx.x * blockDim.x + threadIdx.x;      // k is transposed, each col is a feature
+
+    if (i < seq_len && j < seq_len) {
+        // q 取一行，k 取一列
+        const float* q_row = q + i * head_dim;
+        const float* k_row = k + j * head_dim;
+        
+        // dot_prod: [seq_len, seq_len]
+        scores[i * seq_len + j] =
+            dot_product(q_row, k_row, head_dim) / sqrtf((float)head_dim);
+    }
+}
 
 # Step 10 - softmax_rows (not yet solved)
 # TODO: implement
