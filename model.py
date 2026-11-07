@@ -256,11 +256,100 @@ __global__ void qk_scores(const float* q, const float* k, float* scores, int seq
     }
 }
 
-# Step 10 - softmax_rows (not yet solved)
-# TODO: implement
+# Step 10 - softmax_rows
+#include <math_constants.h>
 
-# Step 11 - pv_matmul (not yet solved)
-# TODO: implement
+__global__ void softmax_rows(float* matrix, int rows, int cols) {
+    // 一个 block 处理一行。
+    int row = blockIdx.x;
+
+    // 线程在 block 内的编号；用于分配列工作和共享内存位置。
+    int tid = threadIdx.x;
+
+    if (row >= rows || cols <= 0) {
+        return;
+    }
+
+    // 使用静态共享内存，而不是 extern __shared__ 动态共享内存。
+    // 动态共享内存需要在 kernel 启动时额外传入字节数；
+    // 如果测试框架没传，shared 就没有足够空间，访问 max_values / sum_values 会出错。
+    // 静态共享内存由编译器分配，因此启动 kernel 时无需额外传共享内存大小。
+    // 两个数组分别保存最大值归约和指数和归约的中间结果。
+    // 要求 blockDim.x <= 1024。
+    __shared__ float max_values[1024];
+    __shared__ float sum_values[1024];
+
+    float* row_data = matrix + row * cols;
+
+    // 每个线程处理 tid、tid + blockDim.x、... 列。
+    float local_max = -CUDART_INF_F;
+    for (int col = tid; col < cols; col += blockDim.x) {
+        local_max = fmaxf(local_max, row_data[col]);
+    }
+
+    max_values[tid] = local_max;
+    __syncthreads();
+
+    // 归约得到该行的最大值。
+    for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+        if (tid < stride) {
+            max_values[tid] =
+                fmaxf(max_values[tid], max_values[tid + stride]);
+        }
+        __syncthreads();
+    }
+    float row_max = max_values[0];
+
+    // 减去行最大值后计算指数，并累计局部和。
+    float local_sum = 0.0f;
+    for (int col = tid; col < cols; col += blockDim.x) {
+        float value = expf(row_data[col] - row_max);
+        row_data[col] = value;
+        local_sum += value;
+    }
+
+    sum_values[tid] = local_sum;
+    __syncthreads();
+
+    // 归约得到该行的指数和。
+    for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+        if (tid < stride) {
+            sum_values[tid] += sum_values[tid + stride];
+        }
+        __syncthreads();
+    }
+    float row_sum = sum_values[0];
+
+    // 原地归一化。
+    for (int col = tid; col < cols; col += blockDim.x) {
+        row_data[col] /= row_sum;
+    }
+}
+
+# Step 11 - pv_matmul
+__global__ void pv_matmul(const float* p, const float* v, float* out, int seq_len, int head_dim) {
+    // TODO: compute out[i, d] = sum_j p[i, j] * v[j, d]
+    // 每个线程负责一个输出元素 out[i, d]。
+    int d = blockIdx.x * blockDim.x + threadIdx.x;
+    int i = blockIdx.y * blockDim.y + threadIdx.y;
+
+    // 处理 seq_len 或 head_dim 不是 block 尺寸整数倍的情况。
+    if (i >= seq_len || d >= head_dim) {
+        return;
+    }
+
+    float sum = 0.0f;
+
+    // 沿共享的序列维度做点积：
+    // P[i, j] 的行优先索引为 i * seq_len + j；
+    // V[j, d] 的行优先索引为 j * head_dim + d。
+    for (int j = 0; j < seq_len; ++j) {
+        sum += p[i * seq_len + j] * v[j * head_dim + d];
+    }
+
+    // out 的形状是 (seq_len, head_dim)，按行优先存储。
+    out[i * head_dim + d] = sum;
+}
 
 # Step 12 - naive_attention (not yet solved)
 # TODO: implement
