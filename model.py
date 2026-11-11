@@ -544,8 +544,28 @@ __device__ void tile_rowmax(const float* s_tile, float* row_max_out, int tile_q,
     __syncthreads();
 }
 
-# Step 20 - tile_exp (not yet solved)
-# TODO: implement
+# Step 20 - tile_exp
+__device__ void tile_exp(float* s_tile, const float* row_max,
+                         int tile_q, int tile_k,
+                         int thread_id, int num_threads) {
+    // TODO: for each (r, c) in the tile, set s_tile[r*tile_k+c] = expf(s_tile[r*tile_k+c] - row_max[r])
+    // 确保所有线程都已完成前序步骤，尤其是 row_max 的计算和写入。
+    __syncthreads();
+
+    // 将二维 tile 展平成一维数组；每个线程按 num_threads 跨步处理元素。
+    const int total_elements = tile_q * tile_k;
+    for (int idx = thread_id; idx < total_elements; idx += num_threads) {
+        // 行优先布局下，idx 对应的行号为 idx / tile_k。
+        const int r = idx / tile_k;
+
+        // 减去对应行的最大值后再取指数，得到数值稳定的 softmax 中间结果。
+        // 原地更新 s_tile[idx]。
+        s_tile[idx] = expf(s_tile[idx] - row_max[r]);
+    }
+
+    // 确保整个 tile 都已更新，供后续步骤读取。
+    __syncthreads();
+}
 
 # Step 21 - tile_rowsum (not yet solved)
 # TODO: implement
