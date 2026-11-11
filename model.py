@@ -591,8 +591,41 @@ __device__ void tile_rowsum(const float* p_tile, float* row_sum_out,
     // 调用方若要让其他线程读取 row_sum_out，应在调用后执行 __syncthreads()。
 }
 
-# Step 22 - accumulate_pv (not yet solved)
-# TODO: implement
+# Step 22 - accumulate_pv
+__device__ void accumulate_pv(const float* p_tile, const float* v_tile, float* out_acc, int tile_q, int tile_k, int head_dim, int thread_id, int num_threads) {
+    // TODO: cooperatively add P_tile * V_tile into out_acc
+     // 输出共有 tile_q * head_dim 个元素。
+    // 将输出展平后按线程跨步分配，每个元素只由一个线程负责。
+    const int output_elements = tile_q * head_dim;
+
+    for (int idx = thread_id; idx < output_elements; idx += num_threads) {
+        // 将展平索引还原为输出矩阵中的行 r 和列 d。
+        const int r = idx / head_dim;
+        const int d = idx % head_dim;
+
+        // 计算 P_tile[r, :] 与 V_tile[:, d] 的点积。
+        float contribution = 0.0f;
+        for (int c = 0; c < tile_k; ++c) {
+            // 两个 tile 都按行优先存储：
+            // P_tile[r, c] 的索引为 r * tile_k + c；
+            // V_tile[c, d] 的索引为 c * head_dim + d。
+            const float p = p_tile[r * tile_k + c];
+            const float v = v_tile[c * head_dim + d];
+            contribution += p * v;
+        }
+
+        // 这是运行中的累加器，必须加上本 tile 的贡献，不能覆盖旧值。
+        out_acc[idx] += contribution;
+    }
+
+    // 每个输出元素只有一个线程更新，函数内部不需要线程间同步。
+    // 若调用方随后让其他线程读取 out_acc，应由调用方执行 __syncthreads()。
+
+    // Note:
+    //     每个线程负责一部分 (r, d) 输出位置，并对 c 求和，实现：
+    // \[\text{out\_acc}[r,d] \mathrel{+}= \sum_{c=0}^{\text{tile\_k}-1} P[r,c]V[c,d]\]
+    // 这样可以并行计算输出元素，同时保留之前 key/value tile 已累积的结果。
+}
 
 # Step 23 - flash_attention_kernel (not yet solved)
 # TODO: implement
