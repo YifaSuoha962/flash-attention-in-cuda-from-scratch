@@ -771,8 +771,43 @@ __global__ void flash_attention_kernel(const float* q, const float* k, const flo
     }
 }
 
-# Step 24 - flash_attention_launcher (not yet solved)
-# TODO: implement
+# Step 24 - flash_attention_launcher
+void flash_attention_launcher(const float* d_q, const float* d_k, const float* d_v,
+                              float* d_out, int seq_len, int head_dim,
+                              int tile_q, int tile_k) {
+    // TODO: configure grid/block/shared memory and launch flash_attention_kernel
+    // 每个 block 处理 tile_q 行 query；最后一个 block 可能只处理部分行。
+    const int num_blocks = (seq_len + tile_q - 1) / tile_q;
+    const dim3 grid(num_blocks);
+
+    // kernel 中的线程通过跨步循环分担 tile 元素，使用 128 个线程。
+    const int threads_per_block = 128;
+    const dim3 block(threads_per_block);
+
+    // Attention 分数按 1/sqrt(head_dim) 缩放。
+    const float scale = 1.0f / sqrtf(static_cast<float>(head_dim));
+
+    // 动态共享内存需要容纳：
+    // Q tile、输出累加器：2 * tile_q * head_dim
+    // K tile、V tile：      2 * tile_k * head_dim
+    // 分数 tile：           tile_q * tile_k
+    // 每行的 4 个统计数组： 4 * tile_q
+    const size_t shared_floats =
+        2ULL * tile_q * head_dim +
+        2ULL * tile_k * head_dim +
+        1ULL * tile_q * tile_k +
+        4ULL * tile_q;
+
+    // kernel 启动参数中的动态共享内存大小以字节为单位。
+    const size_t shared_bytes = shared_floats * sizeof(float);
+
+    // d_q、d_k、d_v 和 d_out 已经是设备指针，直接传入 kernel。
+    flash_attention_kernel<<<grid, block, shared_bytes>>>(
+        d_q, d_k, d_v, d_out,
+        seq_len, head_dim,
+        tile_q, tile_k, scale
+    );
+}
 
 # Step 25 - causal_mask (not yet solved)
 # TODO: implement
