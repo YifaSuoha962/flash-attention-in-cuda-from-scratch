@@ -837,6 +837,157 @@ __device__ void causal_mask(float* s_tile, int q_row_start, int k_col_start,
     // 后续线程若要读取修改后的 s_tile，应由调用方执行 __syncthreads()。
 }
 
-# Step 26 - flash_attention_causal_kernel (not yet solved)
-# TODO: implement
+# Step 26 - flash_attention_causal_kernel
+__global__ void flash_attention_causal_kernel(const float* q, const float* k, const float* v,
+                                                float* out, int seq_len, int head_dim,
+                                                int tile_q, int tile_k, float scale) {
+    // TODO: tiled causal flash attention using shared memory and online softmax
+    // 一个 block 负责一个 query tile。
+    const int query_start = blockIdx.x * tile_q;
+    const int thread_id = threadIdx.x;
+    const int num_threads = blockDim.x;
+
+    // 动态共享内存依次存放 Q/K/V tile、分数 tile、输出累加器和行统计量。
+    extern __shared__ float shared_mem[];
+
+    const int q_elements = tile_q * head_dim;
+    const int kv_elements = tile_k * head_dim;
+    const int score_elements = tile_q * tile_k;
+
+    float* q_tile = shared_mem;
+    float* k_tile = q_tile + q_elements;
+    float* v_tile = k_tile + kv_elements;
+    float* s_tile = v_tile + kv_elements;
+    float* out_acc = s_tile + score_elements;
+
+    float* running_max = out_acc + q_elements;
+    float* running_sum = running_max + tile_q;
+    float* row_max = running_sum + tile_q;
+    float* row_sum = row_max + tile_q;
+
+    // 初始化每行的 online softmax 状态和输出累加器。
+    for (int idx = thread_id; idx < q_elements; idx += num_threads) {
+        out_acc[idx] = 0.0f;
+    }
+    for (int r = thread_id; r < tile_q; r += num_threads) {
+        running_max[r] = -CUDART_INF_F;
+        running_sum[r] = 0.0f;
+    }
+    __syncthreads();
+
+    // Q tile 在遍历 K/V tile 之前加载一次。
+    load_tile(
+        q, q_tile,
+        query_start, 0,
+        seq_len, head_dim,
+        tile_q, head_dim,
+        thread_id, num_threads
+    );
+    __syncthreads();
+
+    // 之后的 key tile 对本 query tile 中任何一行都不可能可见，
+    // 因此只遍历到 query tile 覆盖的末尾或序列末尾。
+    int key_limit = query_start + tile_q;
+    if (key_limit > seq_len) {
+        key_limit = seq_len;
+    }
+
+    for (int key_start = 0; key_start < key_limit; key_start += tile_k) {
+        // 将当前 K/V tile 载入共享内存。
+        load_tile(
+            k, k_tile,
+            key_start, 0,
+            seq_len, head_dim,
+            tile_k, head_dim,
+            thread_id, num_threads
+        );
+        load_tile(
+            v, v_tile,
+            key_start, 0,
+            seq_len, head_dim,
+            tile_k, head_dim,
+            thread_id, num_threads
+        );
+        __syncthreads();
+
+        // 计算当前 tile 的原始注意力分数 Q * K^T * scale。
+        tile_scores(
+            q_tile, k_tile, s_tile,
+            tile_q, tile_k, head_dim, scale,
+            thread_id, num_threads
+        );
+        __syncthreads();
+
+        // 屏蔽最后一个 tile 中超出序列范围的 key 列。
+        // 这些列的共享内存值可能是 load_tile 填充的零，不能参与 softmax。
+        for (int idx = thread_id; idx < score_elements; idx += num_threads) {
+            const int col = idx % tile_k;
+            if (key_start + col >= seq_len) {
+                s_tile[idx] = -CUDART_INF_F;
+            }
+        }
+        __syncthreads();
+
+        // 因果屏蔽：仅允许 key 的绝对位置不大于 query 的绝对位置。
+        // 必须在行最大值和指数计算之前应用。
+        causal_mask(
+            s_tile,
+            query_start, key_start,
+            tile_q, tile_k,
+            thread_id, num_threads
+        );
+        __syncthreads();
+
+        // 求当前分数 tile 的每行最大值。
+        tile_rowmax(s_tile, row_max, tile_q, tile_k, thread_id, num_threads);
+        __syncthreads();
+
+        // 合并旧最大值与当前 tile 最大值，得到新的平移基准。
+        for (int r = thread_id; r < tile_q; r += num_threads) {
+            row_max[r] = online_max(running_max[r], row_max[r]);
+        }
+        __syncthreads();
+
+        // 将分数转换为 exp(score - new_max)，原地写入 s_tile。
+        tile_exp(s_tile, row_max, tile_q, tile_k, thread_id, num_threads);
+        __syncthreads();
+
+        // 计算当前 tile 对每行 softmax 分母的贡献。
+        tile_rowsum(s_tile, row_sum, tile_q, tile_k, thread_id, num_threads);
+        __syncthreads();
+
+        // 将旧的输出累加器和分母换算到新的最大值基准，
+        // 再加入当前 tile 的行和，并更新 running max。
+        for (int r = thread_id; r < tile_q; r += num_threads) {
+            const float correction =
+                correction_factor(running_max[r], row_max[r]);
+
+            rescale_output(out_acc + r * head_dim, head_dim, correction);
+            running_sum[r] =
+                update_running_sum(running_sum[r], correction, row_sum[r]);
+            running_max[r] = row_max[r];
+        }
+        __syncthreads();
+
+        // 累加当前 tile 的 P * V。被屏蔽位置的 P 为 0，不会贡献到输出。
+        accumulate_pv(
+            s_tile, v_tile, out_acc,
+            tile_q, tile_k, head_dim,
+            thread_id, num_threads
+        );
+        __syncthreads();
+    }
+
+    // 用运行分母归一化输出，并跳过最后一个 query tile 中越界的行。
+    for (int idx = thread_id; idx < q_elements; idx += num_threads) {
+        const int r = idx / head_dim;
+        const int d = idx % head_dim;
+        const int query_index = query_start + r;
+
+        if (query_index < seq_len) {
+            out[query_index * head_dim + d] =
+                out_acc[idx] / running_sum[r];
+        }
+    }
+}
 
