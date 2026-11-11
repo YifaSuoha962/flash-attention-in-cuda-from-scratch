@@ -430,8 +430,15 @@ __device__ float update_running_sum(float old_sum, float correction, float block
     return fmaf(correction, old_sum, block_sum);
 }
 
-# Step 16 - rescale_output (not yet solved)
-# TODO: implement
+# Step 16 - rescale_output
+__device__ void rescale_output(float* out_row, int head_dim, float correction) {
+    // TODO: multiply each of the head_dim entries of out_row by correction in place
+    // 遍历当前 query 行的每个输出维度。
+    for (int d = 0; d < head_dim; ++d) {
+        // 将旧的输出累加值重缩放到新的 running-max 基准。
+        out_row[d] *= correction;
+    }
+}
 
 # Step 17 - load_tile (not yet solved)
 # TODO: implement
