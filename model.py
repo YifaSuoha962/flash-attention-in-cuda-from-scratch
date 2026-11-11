@@ -809,8 +809,33 @@ void flash_attention_launcher(const float* d_q, const float* d_k, const float* d
     );
 }
 
-# Step 25 - causal_mask (not yet solved)
-# TODO: implement
+# Step 25 - causal_mask
+__device__ void causal_mask(float* s_tile, int q_row_start, int k_col_start,
+                            int tile_q, int tile_k, int thread_id, int num_threads) {
+    // TODO: write -INFINITY into entries where the global key index exceeds the global query index.
+    // 将 row-major 的二维 score tile 展平成一维，
+    // 各线程按 num_threads 跨步处理，保证每个元素恰好被检查一次。
+    const int total_elements = tile_q * tile_k;
+
+    for (int idx = thread_id; idx < total_elements; idx += num_threads) {
+        // 从一维下标还原出 tile 内的行号和列号。
+        const int r = idx / tile_k;
+        const int c = idx % tile_k;
+
+        // 将 tile 内坐标转换为全局 query 和 key 位置。
+        const int query_index = q_row_start + r;
+        const int key_index = k_col_start + c;
+
+        // 因果注意力不允许 query 访问未来的 key。
+        // 写入真正的负无穷，使后续 expf(score - row_max) 得到 0。
+        if (key_index > query_index) {
+            s_tile[idx] = -CUDART_INF_F;
+        }
+    }
+
+    // 元素之间没有读写依赖，所以函数内无需同步。
+    // 后续线程若要读取修改后的 s_tile，应由调用方执行 __syncthreads()。
+}
 
 # Step 26 - flash_attention_causal_kernel (not yet solved)
 # TODO: implement
