@@ -406,8 +406,14 @@ __device__ float online_max(float old_max, float new_val) {
     return fmaxf(old_max, new_val);
 }
 
-# Step 14 - correction_factor (not yet solved)
-# TODO: implement
+# Step 14 - correction_factor
+__device__ float correction_factor(float old_max, float new_max) {
+    // TODO: return the scalar used to rescale running statistics
+    // 计算 exp(old_max - new_max)，将旧最大值基准下的累积量
+    // 重缩放到 new_max 基准下。
+    // 使用 expf 进行单精度浮点指数计算。
+    return expf(old_max - new_max);
+}
 
 # Step 15 - update_running_sum (not yet solved)
 # TODO: implement
