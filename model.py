@@ -567,8 +567,29 @@ __device__ void tile_exp(float* s_tile, const float* row_max,
     __syncthreads();
 }
 
-# Step 21 - tile_rowsum (not yet solved)
-# TODO: implement
+# Step 21 - tile_rowsum
+__device__ void tile_rowsum(const float* p_tile, float* row_sum_out,
+                            int tile_q, int tile_k,
+                            int thread_id, int num_threads) {
+    // TODO: cooperatively fill row_sum_out[r] with the sum of p_tile row r
+    // 每个线程负责若干行；跨步分配可覆盖 tile_q 大于或小于线程数的情况。
+    for (int r = thread_id; r < tile_q; r += num_threads) {
+        // row-major 布局下，第 r 行从 p_tile[r * tile_k] 开始。
+        const int row_offset = r * tile_k;
+        float sum = 0.0f;
+
+        // 顺序累加该行所有列。
+        for (int c = 0; c < tile_k; ++c) {
+            sum += p_tile[row_offset + c];
+        }
+
+        // 每行只由一个线程处理，因此无需原子操作。
+        row_sum_out[r] = sum;
+    }
+
+    // 本函数没有线程间的数据依赖，因此不需要在这里同步。
+    // 调用方若要让其他线程读取 row_sum_out，应在调用后执行 __syncthreads()。
+}
 
 # Step 22 - accumulate_pv (not yet solved)
 # TODO: implement
