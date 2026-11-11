@@ -516,8 +516,33 @@ __device__ void tile_scores(const float* q_tile, const float* k_tile, float* s_t
     }
 }
 
-# Step 19 - tile_rowmax (not yet solved)
-# TODO: implement
+# Step 19 - tile_rowmax
+__device__ void tile_rowmax(const float* s_tile, float* row_max_out, int tile_q, int tile_k, int thread_id, int num_threads) {
+    // TODO: write row_max_out[r] = max over c of s_tile[r, c]
+    // 等待所有线程完成对 s_tile 的写入，确保读取到完整的 tile。
+    __syncthreads();
+
+    // 每个线程负责若干行，线程之间按 num_threads 跨步分配。
+    for (int r = thread_id; r < tile_q; r += num_threads) {
+        // 从该行第一个元素开始，避免用 0 初始化时错误地抬高全负数行的最大值。
+        const int row_offset = r * tile_k;
+        float row_max = s_tile[row_offset];
+
+        // 扫描这一行剩余的列，计算行最大值。
+        for (int c = 1; c < tile_k; ++c) {
+            const float value = s_tile[row_offset + c];
+            if (value > row_max) {
+                row_max = value;
+            }
+        }
+
+        // 每行只由一个线程负责，因此这里不需要原子操作。
+        row_max_out[r] = row_max;
+    }
+
+    // 确保所有行最大值都已写出，再让调用方继续使用 row_max_out。
+    __syncthreads();
+}
 
 # Step 20 - tile_exp (not yet solved)
 # TODO: implement
