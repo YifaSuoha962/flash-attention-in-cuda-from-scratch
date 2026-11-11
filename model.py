@@ -415,8 +415,20 @@ __device__ float correction_factor(float old_max, float new_max) {
     return expf(old_max - new_max);
 }
 
-# Step 15 - update_running_sum (not yet solved)
-# TODO: implement
+# Step 15 - update_running_sum
+__device__ float update_running_sum(float old_sum, float correction, float block_sum) {
+    // TODO: combine the rescaled old sum with the new block sum
+    // old_sum 是相对于旧最大值计算的累计指数和。
+    // correction = exp(old_max - new_max)，
+    // 用于将 old_sum 重缩放到新最大值的基准下。
+    //
+    // block_sum 已经是相对于 new_max 计算的当前块指数和，
+    // 因此可以直接加到重缩放后的 old_sum 上。
+    //
+    // fmaf(a, b, c) 计算 a * b + c，并尽量使用一次舍入，
+    // 比先乘法再加法具有更好的数值精度。
+    return fmaf(correction, old_sum, block_sum);
+}
 
 # Step 16 - rescale_output (not yet solved)
 # TODO: implement
