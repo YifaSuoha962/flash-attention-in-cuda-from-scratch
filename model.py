@@ -440,8 +440,43 @@ __device__ void rescale_output(float* out_row, int head_dim, float correction) {
     }
 }
 
-# Step 17 - load_tile (not yet solved)
-# TODO: implement
+# Step 17 - load_tile
+__device__ void load_tile(const float* src, float* shared_dst,
+                          int src_row_start, int src_col_start,
+                          int src_rows, int src_cols,
+                          int tile_rows, int tile_cols,
+                          int thread_id, int num_threads) {
+    // TODO: cooperatively copy the tile into shared_dst, zero-filling out-of-bounds positions.
+
+    // tile 中元素总数。
+    const int tile_size = tile_rows * tile_cols;
+
+    // 每个线程处理 thread_id、thread_id + num_threads、... 位置。
+    for (int linear_idx = thread_id;
+         linear_idx < tile_size;
+         linear_idx += num_threads) {
+
+        // 将 tile 的一维索引转换为二维坐标。
+        const int tile_row = linear_idx / tile_cols;
+        const int tile_col = linear_idx % tile_cols;
+
+        // 计算该 tile 元素对应的源矩阵坐标。
+        const int src_row = src_row_start + tile_row;
+        const int src_col = src_col_start + tile_col;
+
+        // 检查源坐标是否越界。
+        if (src_row >= 0 && src_row < src_rows &&
+            src_col >= 0 && src_col < src_cols) {
+            // 源矩阵按行优先存储。
+            shared_dst[linear_idx] =
+                src[(long long)src_row * src_cols + src_col];
+        } else {
+            // 越界位置使用 0 填充，避免后续计算读取无效数据。
+            shared_dst[linear_idx] = 0.0f;
+        }
+    }
+    
+}
 
 # Step 18 - tile_scores (not yet solved)
 # TODO: implement
