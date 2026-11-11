@@ -478,8 +478,43 @@ __device__ void load_tile(const float* src, float* shared_dst,
     
 }
 
-# Step 18 - tile_scores (not yet solved)
-# TODO: implement
+# Step 18 - tile_scores
+__device__ void tile_scores(const float* q_tile, const float* k_tile, float* s_tile,
+                            int tile_q, int tile_k, int head_dim, float scale,
+                            int thread_id, int num_threads) {
+    // TODO: cooperatively fill s_tile[i, j] = scale * dot(q_tile[i, :], k_tile[j, :])
+    // 输出分数 tile 一共有 tile_q * tile_k 个元素。
+    const int total_scores = tile_q * tile_k;
+
+    // 多个线程以 stride 方式协作处理所有输出位置。
+    for (int linear_idx = thread_id;
+         linear_idx < total_scores;
+         linear_idx += num_threads) {
+
+        // 将一维索引转换为分数矩阵中的行列索引。
+        const int query_idx = linear_idx / tile_k;
+        const int key_idx = linear_idx % tile_k;
+
+        // q_tile 的第 query_idx 行，形状为 (head_dim,)。
+        const float* q_row =
+            q_tile + query_idx * head_dim;
+
+        // k_tile 的第 key_idx 行，形状为 (head_dim,)。
+        // 注意：k_tile 是行主序存储，不需要把它当作转置矩阵索引。
+        const float* k_row =
+            k_tile + key_idx * head_dim;
+
+        // 计算 Q 的一行与 K 的一行的点积。
+        float dot = 0.0f;
+        for (int d = 0; d < head_dim; ++d) {
+            dot += q_row[d] * k_row[d];
+        }
+
+        // 写入缩放后的分数：
+        // s_tile[query_idx, key_idx] = scale * dot(q_row, k_row)
+        s_tile[linear_idx] = scale * dot;
+    }
+}
 
 # Step 19 - tile_rowmax (not yet solved)
 # TODO: implement
